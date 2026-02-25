@@ -1,5 +1,24 @@
-# subscription_analytics
-This a business-focused SQL analysis of simulated data for a fictional subscription-based company. This project is intended to allow myself to develop and demonstrate practical skills in SQL. 
+# Project Summary
+This project simulates a subscription-based streaming service operating in 2025 and analyzes its performance using SQL.
+The dataset includes 1,000 simulated customers, their subscription start and end dates, and associated payment records.
+The purpose of this project is to demonstrate practical SQL analysis applied to a subscription business model.
 
-# subscription-analytics
+## Key Metrics Analyzed 
+- Monthly Recurring Revenue (MRR)
+- Active Subscribers by Month
+- Monthly Churn Rate
+- Payment Success Rate
+- Plan-level Performance
+
+## Tools Used
+- PostgreSQL
+- pgAdmin
+- SQL
+- Python (VSCode)
+- Github
+
+
+ 
+
+
 
