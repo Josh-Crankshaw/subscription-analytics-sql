@@ -1,11 +1,34 @@
--- Calculate and output the overall cancellation rate by plan type
--- Outputs: Plan types, total subscriptions in each plan, number of active users with each subscription,
--- the number of cancelled subscriptions with each plan type, and the correlating cancellation rates
+/*
+Query Name: Cancellation Rate by Plan Type
+Purpose: Calculate the proportion of subscriptions that have been cancelled for each plan type.
+Business Question: Which subscription plans experience higher cancellation rates?
+Tables Used:
+  - subscriptions
+Key Columns Used:
+  - plan_type
+  - sub_status
+Assumptions:
+  - Each row represents one subscription
+  - 'cancelled' indicates a completed cancellation
+  - Cancellation rate = cancelled subscriptions / total subscriptions
+Output:
+  - plan_type
+  - total_subscriptions
+  - active_subscriptions
+  - cancelled_subscriptions
+  - cancellation_rate
+*/
+
 SELECT
-	plan_type,
-	COUNT(*) AS total_in_plan,
-	COUNT(*) FILTER (WHERE sub_status = 'active') AS active_subs,
-	COUNT(*) FILTER (WHERE sub_status = 'cancelled') AS cancelled_subs,
-	((COUNT(*) FILTER (WHERE sub_status = 'cancelled'))::NUMERIC / COUNT(*))::DECIMAL(10,4) AS cancellation_rate
+    subscriptions.plan_type,
+    COUNT(*) AS total_subscriptions,
+    COUNT(*) FILTER (WHERE subscriptions.sub_status = 'active') AS active_subscriptions,
+    COUNT(*) FILTER (WHERE subscriptions.sub_status = 'cancelled') AS cancelled_subscriptions,
+    ROUND(
+        COUNT(*) FILTER (WHERE subscriptions.sub_status = 'cancelled')::NUMERIC
+        / NULLIF(COUNT(*), 0),
+        4
+    ) AS cancellation_rate
 FROM subscriptions
-GROUP BY plan_type
+GROUP BY subscriptions.plan_type
+ORDER BY cancellation_rate DESC;

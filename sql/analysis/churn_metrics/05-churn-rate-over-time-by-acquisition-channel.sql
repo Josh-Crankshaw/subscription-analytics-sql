@@ -1,42 +1,88 @@
--- Find how many supscriptions churned each month grouped by acquisition channel
--- Outputs: month_start, acquisition_channel, subscriptions active at month start, subscriptions churned
--- during the month, and churn rate grouped by month and acquisition channel
+/*
+Query Name: Monthly Churn Rate by Acquisition Channel
+Purpose: Calculate monthly churn rates segmented by acquisition channel.
+Business Question: How does churn vary across acquisition channels over time?
+Tables Used:
+  - subscriptions
+  - customers
+Key Columns Used:
+  - customer_id
+  - acquisition_channel
+  - started_date
+  - ended_date
+Assumptions:
+  - A subscription is included in the churn base if active at the start of the month
+  - A subscription is counted as churned if it ends during the month
+  - Date comparisons are performed at the DATE level to avoid timezone issues
+  - Churn rate = churned subscriptions / active subscriptions at month start
+Output:
+  - month_start
+  - acquisition_channel
+  - active_at_month_start
+  - churned_in_month
+  - churn_rate
+*/
+
 WITH months AS (
-	SELECT generate_series(
-		'2025-01-01'::TIMESTAMPTZ,
-		'2025-12-01'::TIMESTAMPTZ,
-		INTERVAL '1 month'
-	) AS month_start
+    SELECT
+        generate_series(
+            DATE '2025-01-01',
+            DATE '2025-12-01',
+            INTERVAL '1 month'
+        )::DATE AS month_start
 ),
-monthly_base AS (
-	SELECT
-		months.month_start,
-		acquisition_channel,
-		COUNT(*) FILTER (
-			WHERE started_date < months.month_start
-			AND (ended_date IS NULL OR ended_date >= months.month_start)	
-		) AS active_at_month_start,
-		COUNT(*) FILTER (
-			WHERE started_date < months.month_start
-			AND ended_date IS NOT NULL
-			AND ended_date >= months.month_start
-			AND ended_date < months.month_start + INTERVAL '1 month'
-		) AS churned_in_month
-	FROM months
-	CROSS JOIN subscriptions
-	INNER JOIN customers
-	ON customers.customer_id = subscriptions.customer_id
-	GROUP BY months.month_start, acquisition_channel	
+
+active_base AS (
+    SELECT
+        months.month_start,
+        customers.acquisition_channel,
+        COUNT(subscriptions.subscription_id) AS active_at_month_start
+    FROM months
+    LEFT JOIN subscriptions
+        ON subscriptions.started_date::DATE < months.month_start
+       AND (
+            subscriptions.ended_date IS NULL
+            OR subscriptions.ended_date::DATE >= months.month_start
+       )
+    LEFT JOIN customers
+        ON subscriptions.customer_id = customers.customer_id
+    GROUP BY
+        months.month_start,
+        customers.acquisition_channel
+),
+
+monthly_churn AS (
+    SELECT
+        months.month_start,
+        customers.acquisition_channel,
+        COUNT(subscriptions.subscription_id) AS churned_in_month
+    FROM months
+    LEFT JOIN subscriptions
+        ON subscriptions.started_date::DATE < months.month_start
+       AND subscriptions.ended_date IS NOT NULL
+       AND subscriptions.ended_date::DATE >= months.month_start
+       AND subscriptions.ended_date::DATE < months.month_start + INTERVAL '1 month'
+    LEFT JOIN customers
+        ON subscriptions.customer_id = customers.customer_id
+    GROUP BY
+        months.month_start,
+        customers.acquisition_channel
 )
 
-SELECT 
-	month_start::DATE AS month_start,
-	acquisition_channel,
-	active_at_month_start,
-	churned_in_month,
-	ROUND(
-		churned_in_month::NUMERIC / NULLIF(active_at_month_start, 0),
-		4
-	) AS churn_rate
-FROM monthly_base
-ORDER BY month_start, acquisition_channel
+SELECT
+    active_base.month_start,
+    active_base.acquisition_channel,
+    active_base.active_at_month_start,
+    monthly_churn.churned_in_month,
+    ROUND(
+        monthly_churn.churned_in_month::NUMERIC
+        / NULLIF(active_base.active_at_month_start, 0),
+        4
+    ) AS churn_rate
+FROM active_base
+JOIN monthly_churn
+    ON active_base.month_start = monthly_churn.month_start
+   AND active_base.acquisition_channel = monthly_churn.acquisition_channel
+ORDER BY
+    active_base.month_start,
+    active_base.acquisition_channel;

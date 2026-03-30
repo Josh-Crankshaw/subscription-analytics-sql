@@ -1,27 +1,28 @@
 /*
-Query Name: Failed Payment Rate by Plan Type
-Purpose: Calculate the proportion of failed payment attempts for each subscription plan.
-Business Question: Which subscription plans experience higher payment failure rates?
+Query Name: Monthly Payment Failure Rate
+Purpose: Calculate the proportion of payment attempts that failed in each month.
+Business Question: How does payment failure rate change over time?
 Tables Used:
-  - subscriptions
   - payments
 Key Columns Used:
-  - plan_type
+  - payment_at
   - payment_status
 Assumptions:
   - Each row represents one payment attempt
   - Payment statuses include 'successful' and 'failed'
-  - Failed payment rate = failed payments / total payments
+  - Failure rate = failed payments / total payment attempts
 Output:
-  - plan_type
+  - month_start
+  - month_name
   - total_payments
   - successful_payments
   - failed_payments
-  - failed_payment_rate
+  - failure_rate
 */
 
 SELECT
-    subscriptions.plan_type,
+    DATE_TRUNC('month', payments.payment_at) AS month_start,
+    TRIM(TO_CHAR(DATE_TRUNC('month', payments.payment_at), 'Month')) AS month_name,
     COUNT(*) AS total_payments,
     COUNT(*) FILTER (WHERE payments.payment_status = 'successful') AS successful_payments,
     COUNT(*) FILTER (WHERE payments.payment_status = 'failed') AS failed_payments,
@@ -29,9 +30,7 @@ SELECT
         COUNT(*) FILTER (WHERE payments.payment_status = 'failed')::NUMERIC
         / NULLIF(COUNT(*), 0),
         4
-    ) AS failed_payment_rate
-FROM subscriptions
-JOIN payments
-    ON subscriptions.subscription_id = payments.subscription_id
-GROUP BY subscriptions.plan_type
-ORDER BY failed_payment_rate DESC;
+    ) AS failure_rate
+FROM payments
+GROUP BY DATE_TRUNC('month', payments.payment_at)
+ORDER BY month_start;

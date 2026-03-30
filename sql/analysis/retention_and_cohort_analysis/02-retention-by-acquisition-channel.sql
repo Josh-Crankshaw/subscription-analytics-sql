@@ -1,59 +1,102 @@
--- Calculates the retention of each subscription cohort by acquisition channel every month until the end of the year
--- Outputs: The cohort month, the subscription acquisition channel, the months since cohort was formed, the size of the cohort, the number
--- of subscriptions retained through the month, and the rate of retention through the month.
-WITH
-cohort AS (
-	SELECT
-		subscription_id,
-		acquisition_channel,
-		DATE_TRUNC('month', started_date) AS cohort_month,
-		started_date,
-		ended_date
-	FROM subscriptions
-	JOIN customers
-	ON subscriptions.customer_id = customers.customer_id
+/*
+Query Name: Cohort Retention by Acquisition Channel
+Purpose: Measure monthly retention for each subscription cohort segmented by acquisition channel.
+Business Question: How does retention vary across acquisition channels over time?
+Tables Used:
+  - subscriptions
+  - customers
+Key Columns Used:
+  - subscription_id
+  - customer_id
+  - acquisition_channel
+  - started_date
+  - ended_date
+Assumptions:
+  - A cohort is defined by the month the subscription started
+  - Acquisition channel is assigned at the customer level
+  - A subscription is counted as retained if it was active at any point during the month
+  - Retention rate = retained subscriptions / cohort size
+Output:
+  - cohort_month
+  - acquisition_channel
+  - months_since
+  - cohort_size
+  - retained_subscriptions
+  - retention_rate
+*/
+
+WITH subscription_cohorts AS (
+    SELECT
+        subscriptions.subscription_id,
+        customers.acquisition_channel,
+        DATE_TRUNC('month', subscriptions.started_date) AS cohort_month,
+        subscriptions.started_date,
+        subscriptions.ended_date
+    FROM subscriptions
+    JOIN customers
+        ON subscriptions.customer_id = customers.customer_id
 ),
+
 months AS (
-	SELECT generate_series(
-		'2025-01-01'::TIMESTAMPTZ,
-		'2025-12-01'::TIMESTAMPTZ,
-		INTERVAL '1 month'
-	)::TIMESTAMPTZ AS month_start
+    SELECT
+        generate_series(
+            '2025-01-01'::TIMESTAMPTZ,
+            '2025-12-01'::TIMESTAMPTZ,
+            INTERVAL '1 month'
+        )::TIMESTAMPTZ AS month_start
 ),
+
 cohort_sizes AS (
-	SELECT
-		cohort_month,
-		acquisition_channel,
-		COUNT(*) AS cohort_size
-	FROM cohort
-	GROUP BY cohort_month, acquisition_channel
+    SELECT
+        subscription_cohorts.cohort_month,
+        subscription_cohorts.acquisition_channel,
+        COUNT(*) AS cohort_size
+    FROM subscription_cohorts
+    GROUP BY
+        subscription_cohorts.cohort_month,
+        subscription_cohorts.acquisition_channel
 ),
-activity AS (
-	SELECT
-		cohort_month,
-		acquisition_channel,
-		month_start,
-		((DATE_PART('year', month_start) - DATE_PART('year', cohort_month)) * 12
-		+ (DATE_PART('month', month_start) - DATE_PART('month', cohort_month))
-		)::INT AS months_since,
-		COUNT(*) AS retained_subs	
-	FROM cohort
-	JOIN months
-	ON month_start >= cohort_month
-		AND started_date < (month_start + INTERVAL '1 month')
-     	AND (ended_date IS NULL OR ended_date >= month_start)
-    GROUP BY cohort_month, acquisition_channel, month_start
+
+cohort_retention AS (
+    SELECT
+        subscription_cohorts.cohort_month,
+        subscription_cohorts.acquisition_channel,
+        months.month_start,
+        (
+            (DATE_PART('year', months.month_start) - DATE_PART('year', subscription_cohorts.cohort_month)) * 12
+            + (DATE_PART('month', months.month_start) - DATE_PART('month', subscription_cohorts.cohort_month))
+        )::INT AS months_since,
+        COUNT(*) AS retained_subscriptions
+    FROM subscription_cohorts
+    JOIN months
+        ON months.month_start >= subscription_cohorts.cohort_month
+       AND subscription_cohorts.started_date < months.month_start + INTERVAL '1 month'
+       AND (
+            subscription_cohorts.ended_date IS NULL
+            OR subscription_cohorts.ended_date >= months.month_start
+       )
+    GROUP BY
+        subscription_cohorts.cohort_month,
+        subscription_cohorts.acquisition_channel,
+        months.month_start
 )
-SELECT 
-	activity.cohort_month,
-	activity.acquisition_channel,
-	months_since,
-	cohort_size,
-	retained_subs,
-	ROUND(retained_subs::numeric / cohort_size, 4) AS retention_rate
-FROM activity 
-JOIN cohort_sizes 
-ON activity.cohort_month = cohort_sizes.cohort_month
-AND activity.acquisition_channel = cohort_sizes.acquisition_channel
-WHERE months_since BETWEEN 0 AND 11
-ORDER BY cohort_month, acquisition_channel, months_since;
+
+SELECT
+    cohort_retention.cohort_month,
+    cohort_retention.acquisition_channel,
+    cohort_retention.months_since,
+    cohort_sizes.cohort_size,
+    cohort_retention.retained_subscriptions,
+    ROUND(
+        cohort_retention.retained_subscriptions::NUMERIC / cohort_sizes.cohort_size,
+        4
+    ) AS retention_rate
+FROM cohort_retention
+JOIN cohort_sizes
+    ON cohort_retention.cohort_month = cohort_sizes.cohort_month
+   AND cohort_retention.acquisition_channel = cohort_sizes.acquisition_channel
+WHERE cohort_retention.months_since BETWEEN 0 AND 11
+ORDER BY
+    cohort_retention.cohort_month,
+    cohort_retention.acquisition_channel,
+    cohort_retention.months_since;

@@ -1,17 +1,38 @@
--- Calculate the overall cancellation rate of subscriptions based on their acquisition channel
--- Outputs: acquisition channel, total subscriptions, active subscriptions, cancelled subscriptions,
--- and cancellation rate
-SELECT 
-	acquisition_channel,
-	COUNT(*) AS total_subs,
-	COUNT(*) FILTER (
-		WHERE sub_status = 'active'
-	) AS active_subs,
-	COUNT(*) FILTER (
-		WHERE sub_status = 'cancelled'
-	) AS cancelled_subs,
-	(COUNT(*) FILTER (WHERE sub_status = 'cancelled')::NUMERIC / COUNT(*))::DECIMAL(10,3) AS cancellation_rate
+/*
+Query Name: Cancellation Rate by Acquisition Channel
+Purpose: Calculate the proportion of subscriptions that have been cancelled for each acquisition channel.
+Business Question: Which acquisition channels produce customers with higher cancellation rates?
+Tables Used:
+  - customers
+  - subscriptions
+Key Columns Used:
+  - customer_id
+  - acquisition_channel
+  - sub_status
+Assumptions:
+  - Each row represents one subscription
+  - Acquisition channel is assigned at the customer level
+  - Cancellation rate = cancelled subscriptions / total subscriptions
+Output:
+  - acquisition_channel
+  - total_subscriptions
+  - active_subscriptions
+  - cancelled_subscriptions
+  - cancellation_rate
+*/
+
+SELECT
+    customers.acquisition_channel,
+    COUNT(*) AS total_subscriptions,
+    COUNT(*) FILTER (WHERE subscriptions.sub_status = 'active') AS active_subscriptions,
+    COUNT(*) FILTER (WHERE subscriptions.sub_status = 'cancelled') AS cancelled_subscriptions,
+    ROUND(
+        COUNT(*) FILTER (WHERE subscriptions.sub_status = 'cancelled')::NUMERIC
+        / NULLIF(COUNT(*), 0),
+        4
+    ) AS cancellation_rate
 FROM customers
-INNER JOIN subscriptions
-ON customers.customer_id = subscriptions.customer_id
-GROUP BY acquisition_channel
+JOIN subscriptions
+    ON customers.customer_id = subscriptions.customer_id
+GROUP BY customers.acquisition_channel
+ORDER BY cancellation_rate DESC;
